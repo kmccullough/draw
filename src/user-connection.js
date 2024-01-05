@@ -1,9 +1,9 @@
-
+const { WebSocket } = require('ws');
 
 const messages = new class {
 
-  pos() {
-
+  pos(x, y) {
+    this.userConnections.sendFrom(this, 'pos', this.connectionId, x, y);
   }
 
 };
@@ -23,13 +23,13 @@ class UserConnection {
 
   connect(socket) {
     this.socket = socket;
-    console.error(`connected ${this.connectionId}`);
-    socket.send(JSON.stringify([ 'pos', 0, 0 ]));
+    console.log(`connected ${this.connectionId}`);
+    this.send('pos', this.connectionId, 0, 0);
   }
 
   reconnect(socket) {
     this.socket = socket;
-    console.error(`reconnected ${this.connectionId}`);
+    console.log(`reconnected ${this.connectionId}`);
   }
 
   timeout() {
@@ -44,6 +44,11 @@ class UserConnection {
 
   error(error) {
     console.error(`error on ${this.connectionId}:`, error);
+  }
+
+  send(type, ...args) {
+    this.socket.send(JSON.stringify([ type, ...args ]));
+    return this;
   }
 
 }

@@ -12,7 +12,7 @@ class UserConnections {
   connections = {};
   connectionIds = [];
   connectionsBySocket = new WeakMap();
-  socketServer;
+  socket;
   pingInterval;
 
   instance(...args) {
@@ -22,7 +22,7 @@ class UserConnections {
   init() {
     const userConnections = this;
     const { connectionsBySocket } = this;
-    const socketServer = this.socketServer = new WebSocketServer({ port: 8080 });
+    const socketServer = this.socket = new WebSocketServer({ port: 8080 });
     this.pingInterval = setInterval(() => {
       for (const socket of socketServer.clients) {
         if (socket.isAlive === false) {
@@ -108,16 +108,16 @@ class UserConnections {
       }
     });
     socket.on('message', data => {
-      if (!(data = userConnections.getMessageData(data))) {
+      if (!(data = userConnections.getMessageData(data, connectionId))) {
         return;
       }
       const [ type, ...args ] = data;
-      if (!type || messages[type]) {
+      if (!type || !messages[type]) {
         console.error(`received from ${connectionId} unknown message type: ${type}`);
         return;
       }
       try {
-        messages[type].apply(this, args);
+        messages[type].apply(userConnection, args);
       } catch (e) {
         console.error(`error processing message of type ${type} from ${connectionId}`);
       }
@@ -143,6 +143,21 @@ class UserConnections {
 
   destroy() {
     clearInterval(this.pingInterval);
+  }
+
+  send(type, ...args) {
+    return this.sendFrom(null, type, ...args);
+  }
+
+  sendFrom(userConnection, type, ...args) {
+    const { connections } = this;
+    for (const connectionId of this.connectionIds) {
+      const connection = connections[connectionId];
+      if (connection !== userConnection) {
+        connection.send(type, ...args);
+      }
+    }
+    return this;
   }
 
 }
