@@ -1,0 +1,19 @@
+{
+  "name": "script-draw",
+  "version": "0.0.1",
+  "description": "Collaborative drawing with scripting",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Kerry McCullough <subone@subone.org>",
+  "license": "ISC",
+  "dependencies": {
+    "@fastify/static": "^6.12.0",
+    "fastify": "^4.25.2",
+    "ws": "^8.16.0"
+  },
+  "optionalDependencies": {
+    "bufferutil": "^4.0.8"
+  }
+}

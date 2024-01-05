@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+
+<title>Canvas Template</title>
+
+<style>
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+  }
+
+</style>
+
+</head>
+<body>
+
+<canvas></canvas>
+
+<script>(() => { 'use strict';
+
+document.addEventListener('DOMContentLoaded', () => {
+
+  class Emitter {
+
+    listeners = {};
+
+    on(event, fn) {
+      (this.listeners[event] ??= []).push(fn);
+      return this;
+    }
+
+    off(event, fn) {
+      const listeners = this.listeners[event];
+      const i = listeners?.indexOf(fn) ?? -1;
+      if (i >= 0) {
+        listeners.splice(i, 1);
+        if (!listeners.length) {
+          delete this.listeners[event];
+        }
+      }
+      return this;
+    }
+
+    emit(event, ...args) {
+      for (const listener of this.listeners[event] ?? []) {
+        listener?.apply?.(this, args);
+      }
+      return this;
+    }
+
+  }
+
+  class Connection {
+
+    connection = new Emitter;
+    messages = new Emitter;
+
+    constructor(host, connectionId = null, connectionKey = null) {
+      this.host = host;
+      this.connectionId = connectionId;
+      this.connectionKey = connectionKey;
+      this.reconnect();
+    }
+
+    reconnect() {
+      const socket = this.socket = new WebSocket('ws://' + (this.host ?? 'localhost:8080'));
+      socket.addEventListener('error', e => {
+        console.error('ws error', e);
+        this.connection.emit('error', e, this);
+      });
+      socket.addEventListener('close', () => {
+        console.log('ws closed');
+        this.connection.emit('close', this);
+        // this.reconnect();
+      });
+      socket.addEventListener('open', () => {
+        socket.send(JSON.stringify([ '$connect',
+          ...(this.connectionId ? [ this.connectionId, this.connectionKey ] : [])
+        ]));
+      });
+      socket.addEventListener('message', event => {
+        let { data } = event;
+        console.log('Message from server ', data);
+        try {
+          data = JSON.parse(data);
+        } catch (e) {
+          data = null;
+        }
+        if (!Array.isArray(data)) {
+          console.error('Error parsing message');
+          return;
+        }
+        const [ type, ...args ] = data;
+        switch (type) {
+          case '$connect': {
+            this.connectionId = args[0];
+            this.connectionKey = args[1];
+            this.connection.emit('open', this);
+          } break;
+          default:
+            this.messages.emit(type, ...args, this);
+        }
+      });
+    }
+
+    send(event, ...args) {
+      this.socket.send(JSON.stringify([ event, ...args ]));
+      return this;
+    }
+
+  }
+
+  const host = 'localhost:8080';
+  const connection = new Connection(host);
+  connection.messages
+    .on('pos', (x, y, c) => console.log('pos', x, y, c))
+  ;
+
+  const canvas = document.querySelector('canvas');
+  const ctx = canvas.getContext('2d');
+  const state = {
+    tick: 0,
+    colorful: false
+  };
+  setInterval(function () {
+    // ++state.tick;
+  }, 100);
+  window.addEventListener('keypress', function(e) {
+    const keyCode = typeof e.which === "number" ? e.which : e.keyCode;
+    onKeyPress(keyCode, state);
+  });
+  (function animationCallback() {
+    // call again next time we can draw
+    window.requestAnimationFrame(animationCallback);
+    // Draw the thing
+    animate(canvas, ctx, state);
+  })();
+});
+
+function onKeyPress(keyCode, state) {
+  switch (keyCode) {
+    case 32: // Spacebar
+      state.colorful = !state.colorful;
+      break;
+    default:
+      console.log(keyCode);
+  }
+}
+
+function animate(canvas, ctx, state) {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  // Clear canvas
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+}
+
+})()</script>
+
+</body>
+</html>
