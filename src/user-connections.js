@@ -41,6 +41,10 @@ class UserConnections {
     });
   }
 
+  close(userConnection) {
+
+  }
+
   handleConnections(socket) {
     const userConnections = this;
     const { connectionIds, connections } = userConnections;
@@ -72,8 +76,10 @@ class UserConnections {
         }
       }
       if (!connection) {
-        connectionId = 1;
-        for (; connectionIds.includes(connectionId); ++connectionId);
+        if (!connectionId) {
+          connectionId = 1;
+          for (; connectionIds.includes(connectionId); ++connectionId);
+        }
         connectionIds.push(socket.id = connectionId);
         connectionKey = Math.ceil(Math.random() * 0xffffffff);
       }
@@ -95,6 +101,8 @@ class UserConnections {
     const { connectionId, messages, socket } = userConnection;
     socket.on('close', () => {
       try {
+        this.connectionIds.splice(this.connectionIds.findIndex(id => id === connectionId), 1);
+        delete this.connections[connectionId];
         userConnection.disconnect();
       } catch (e) {
         console.error(`error processing disconnect on ${connectionId}`);
@@ -119,7 +127,7 @@ class UserConnections {
       try {
         messages[type].apply(userConnection, args);
       } catch (e) {
-        console.error(`error processing message of type ${type} from ${connectionId}`);
+        console.error(`error processing message of type ${type} from ${connectionId}`, e);
       }
     });
   }
@@ -137,7 +145,6 @@ class UserConnections {
       console.error(`received from ${connectionId} bad ${isNew ? 'connection ' : ''}data`);
       return;
     }
-    console.log(`received from ${connectionId}:`, data);
     return data;
   }
 

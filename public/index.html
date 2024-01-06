@@ -68,19 +68,11 @@ class Connection {
 
   reconnect() {
     const socket = this.socket = new WebSocket('ws://' + (this.host ?? 'localhost:8080'));
-    socket.addEventListener('error', e => {
-      console.error('ws error', e);
-      this.connection.emit('error', e, this);
-    });
-    socket.addEventListener('close', () => {
-      console.error('ws closed');
-      this.connection.emit('close', this);
-    });
+    socket.addEventListener('error', e => this.connection.emit('error', e, this));
+    socket.addEventListener('close', () => this.connection.emit('close', this));
     socket.addEventListener('open', () => {
       this.connection.emit('$open', this);
-      socket.send(JSON.stringify([ '$connect',
-        ...(this.connectionId ? [ this.connectionId, this.connectionKey ] : [])
-      ]));
+      this.send('$connect', ...(this.connectionId ? [ this.connectionId, this.connectionKey ] : []));
     });
     socket.addEventListener('message', event => {
       let { data } = event;
@@ -109,7 +101,6 @@ class Connection {
 
   send(event, ...args) {
     if (this.socket.readyState === 1) {
-      console.log();
       this.socket.send(JSON.stringify([ event, ...args ]));
     }
     return this;
@@ -130,12 +121,14 @@ class Reconnection {
     this.fail = this.fail.bind(this);
     this.succeed = this.succeed.bind(this);
     this.stabilized = this.stabilized.bind(this);
-    connection.connection.on('close', this.fail);
-    connection.connection.on('error', this.fail);
-    connection.connection.on('$open', this.succeed);
+    connection.connection
+      .on('close', this.fail)
+      .on('error', this.fail)
+      .on('$open', this.succeed)
+    ;
   }
 
-  destroy() {
+  clearTimeouts() {
     clearTimeout(this.reconnectTimeout);
     clearTimeout(this.stabilizeTimeout);
   }
@@ -146,8 +139,7 @@ class Reconnection {
   }
 
   fail() {
-    clearTimeout(this.reconnectTimeout);
-    clearTimeout(this.stabilizeTimeout);
+    this.clearTimeouts();
     let delay = this.delay;
     const nextDelay = delay ? delay * 2 : this.initialDelay;
     if (nextDelay < this.maxDelay) {
@@ -167,14 +159,12 @@ class Reconnection {
   }
 
   succeed() {
-    clearTimeout(this.reconnectTimeout);
-    clearTimeout(this.stabilizeTimeout);
+    this.clearTimeouts();
     this.stabilizeTimeout = setTimeout(this.stabilized, this.stableTime);
   }
 
   stabilized() {
-    clearTimeout(this.reconnectTimeout);
-    clearTimeout(this.stabilizeTimeout);
+    this.clearTimeouts();
     this.delay = this.rounds = null;
   }
 
@@ -194,6 +184,7 @@ document.addEventListener('DOMContentLoaded', () => {
     .on('open', () => {
       state.positions = {};
     })
+    .on('error', e => console.error('ws error', e))
     .on('message', (handled, type, ...args) => {
       if (!handled) {
         console.log('Unhandled message from server: ', type, args);
@@ -250,6 +241,11 @@ function onMouseMove(event, state) {
 function animate(canvas, ctx, state, connection) {
   const width = canvas.width = window.innerWidth;
   const height = canvas.height = window.innerHeight;
+  const { connectionId : myId } = connection;
+  if (!myId) {
+    return;
+  }
+
   const halfWidth = width / 2;
   const halfHeight = height / 2;
 
@@ -261,16 +257,18 @@ function animate(canvas, ctx, state, connection) {
   if (state.pos?.[0] !== x || state.pos?.[1] !== y) {
     connection.send('pos', ...(state.pos = [ x, y ]));
   }
+
   ctx.beginPath();
   ctx.fillStyle = 'rgba(0, 0, 0, .5)';
-  for (let [ connectionId, [ x, y ] ] of Object.entries(state.positions ?? {})) {
+  for (let [ id, [ x, y ] ] of Object.entries(state.positions ?? {})) {
     ctx.beginPath();
-    drawPos(ctx, connectionId, x + halfWidth, y + halfHeight);
+    drawPos(ctx, id, x + halfWidth, y + halfHeight);
   }
   ctx.fill();
+
   ctx.fillStyle = 'rgba(64, 128, 255, .5)';
   ctx.beginPath();
-  drawPos(ctx, connection.connectionId, mx, my);
+  drawPos(ctx, myId, mx, my);
   ctx.fill();
 }
 
