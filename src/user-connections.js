@@ -19,10 +19,10 @@ class UserConnections {
     return new UserConnections(...args);
   }
 
-  init() {
+  init(port = 8080) {
     const userConnections = this;
     const { connectionsBySocket } = this;
-    const socketServer = this.socket = new WebSocketServer({ port: 8080 });
+    const socketServer = this.socket = new WebSocketServer({ port });
     this.pingInterval = setInterval(() => {
       for (const socket of socketServer.clients) {
         if (socket.isAlive === false) {

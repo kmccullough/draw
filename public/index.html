@@ -174,11 +174,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const state = {
     tick: 0,
-    colorful: false
+    colorful: false,
+    drawings: {},
   };
 
-  const host = 'localhost:8080';
+  const host = 'localhost:3003';
   const connection = new Connection(host);
+  state.connection = connection;
   new Reconnection(connection);
   connection.connection
     .on('open', () => {
@@ -203,6 +205,12 @@ document.addEventListener('DOMContentLoaded', () => {
         pos[connectionId] = [ x, y ];
       }
     })
+    .on('draw', (connectionId, drawing) => {
+      if (connectionId === connection.connectionId) {
+        return;
+      }
+      (state.drawings[connectionId] ??= []).push(...drawing);
+    })
   ;
 
   const canvas = document.querySelector('canvas');
@@ -215,11 +223,14 @@ document.addEventListener('DOMContentLoaded', () => {
   canvas.addEventListener('mousemove', e => {
     onMouseMove(e, state);
   });
+  canvas.addEventListener('mousedown', e => {
+    onMouseDown(e, state);
+  });
   (function animationCallback() {
     // call again next time we can draw
     window.requestAnimationFrame(animationCallback);
     // Draw the thing
-    animate(canvas, ctx, state, connection);
+    animate(canvas, ctx, state);
   })();
 });
 
@@ -238,7 +249,48 @@ function onMouseMove(event, state) {
   state.mousePos = [ clientX, clientY ];
 }
 
-function animate(canvas, ctx, state, connection) {
+function onMouseDown(event, state) {
+  const { clientX, clientY } = event;
+  state.mousePos = [ clientX, clientY ];
+  (state.drawing ??= []).push(state.mousePos);
+}
+
+function getRandomColor() {
+  return '#' + (Math.floor(Math.random() * 0xffffff)).toString(16).padStart(6, '0');
+}
+
+const colorsById = new Map([ [ null, 'black' ] ]);
+function getColorById(colorId = null) {
+  if (colorsById.has(colorId)) {
+    return colorsById.get(colorId);
+  }
+  let color = getRandomColor();
+  colorsById.set(colorId, color);
+  return color;
+}
+
+const CIRCLE = 2 * Math.PI;
+function drawPos(ctx, x, y, text, colorId) {
+  ctx.fillStyle = getColorById(colorId);
+  ctx.beginPath();
+  ctx.arc(x, y, 4, 0, CIRCLE);
+  ctx.fill();
+  ctx.fillText(text, x, y - 10);
+}
+
+function draw(ctx, drawing, colorId = null) {
+  ctx.strokeStyle = getColorById(colorId);
+  ctx.beginPath();
+  let start = true;
+  for (const vertex of drawing || []) {
+    ctx[start ? 'moveTo' : 'lineTo'](...vertex);
+    start = false;
+  }
+  ctx.stroke();
+}
+
+function animate(canvas, ctx, state) {
+  const { connection } = state;
   const width = canvas.width = window.innerWidth;
   const height = canvas.height = window.innerHeight;
   const { connectionId : myId } = connection;
@@ -254,28 +306,33 @@ function animate(canvas, ctx, state, connection) {
   my ??= halfHeight;
   const x = Math.floor(mx - halfWidth);
   const y = Math.floor(my - halfHeight);
+
   if (state.pos?.[0] !== x || state.pos?.[1] !== y) {
     connection.send('pos', ...(state.pos = [ x, y ]));
   }
 
-  ctx.beginPath();
-  ctx.fillStyle = 'rgba(0, 0, 0, .5)';
-  for (let [ id, [ x, y ] ] of Object.entries(state.positions ?? {})) {
-    ctx.beginPath();
-    drawPos(ctx, id, x + halfWidth, y + halfHeight);
+  for (let id in state.drawings) {
+    id = +id;
+    if (id === myId) {
+      continue;
+    }
+    draw(ctx, state.drawings[id], id);
   }
-  ctx.fill();
 
-  ctx.fillStyle = 'rgba(64, 128, 255, .5)';
-  ctx.beginPath();
-  drawPos(ctx, myId, mx, my);
-  ctx.fill();
-}
+  if (state.drawing?.length) {
+    connection.send('draw', state.drawing);
+    (state.drawings[myId] ??= []).push(...state.drawing);
+    state.drawing = null;
+  }
+  draw(ctx, state.drawings[myId]);
 
-const circle = 2 * Math.PI;
-function drawPos(ctx, text, x, y) {
-  ctx.arc(x, y, 4, 0, circle);
-  ctx.fillText(text, x, y - 10);
+  for (let [ id, [ x, y ] ] of Object.entries(state.positions ?? {})) {
+    id = +id;
+    if (id === myId) {
+      continue;
+    }
+    drawPos(ctx, x + halfWidth, y + halfHeight, id, id);
+  }
 }
 
 })()</script>

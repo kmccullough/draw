@@ -6,6 +6,10 @@ const messages = new class {
     this.userConnections.sendFrom(this, 'pos', this.connectionId, x, y);
   }
 
+  draw(drawing) {
+    this.userConnections.sendFrom(this, 'draw', this.connectionId, drawing);
+  }
+
 };
 
 class UserConnection {
