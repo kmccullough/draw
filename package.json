@@ -8,12 +8,13 @@
   },
   "author": "Kerry McCullough <subone@subone.org>",
   "license": "ISC",
-  "dependencies": {
-    "@fastify/static": "^6.12.0",
-    "fastify": "^4.25.2",
-    "ws": "^8.16.0"
-  },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
+  },
+  "devDependencies": {
+    "@fastify/static": "^6.12.0",
+    "@fastify/websocket": "^8.3.1",
+    "fastify": "^4.25.2",
+    "ws": "^8.16.0"
   }
 }

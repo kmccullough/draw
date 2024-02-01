@@ -1,4 +1,3 @@
-const { WebSocketServer } = require('ws');
 const UserConnection = require('./user-connection');
 
 function heartbeat() {
@@ -15,14 +14,18 @@ class UserConnections {
   socket;
   pingInterval;
 
+  constructor() {
+    this.init = this.init.bind(this);
+    this.initConnection = this.initConnection.bind(this);
+  }
+
   instance(...args) {
     return new UserConnections(...args);
   }
 
-  init(port = 8080) {
-    const userConnections = this;
+  init(webSocketServer) {
     const { connectionsBySocket } = this;
-    const socketServer = this.socket = new WebSocketServer({ port });
+    const socketServer = this.socket = webSocketServer;
     this.pingInterval = setInterval(() => {
       for (const socket of socketServer.clients) {
         if (socket.isAlive === false) {
@@ -34,11 +37,12 @@ class UserConnections {
         socket.ping();
       }
     }, 30000);
-    socketServer.on('connection', function connection(socket) {
-      heartbeat.call(socket);
-      socket.on('pong', heartbeat);
-      userConnections.handleConnections(socket);
-    });
+  }
+
+  initConnection(socket) {
+    heartbeat.call(socket);
+    socket.on('pong', heartbeat);
+    this.handleConnections(socket);
   }
 
   close(userConnection) {
