@@ -194,6 +194,9 @@ document.addEventListener('DOMContentLoaded', () => {
     })
   ;
   connection.messages
+    .on('reboot', time => {
+      console.log(`Server will reboot in ${Math.floor(time / 1000)} seconds...`);
+    })
     .on('pos', (connectionId, x, y) => {
       if (connectionId === connection.connectionId) {
         return;

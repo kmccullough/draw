@@ -25,9 +25,9 @@ class UserConnections {
 
   init(webSocketServer) {
     const { connectionsBySocket } = this;
-    const socketServer = this.socket = webSocketServer;
+    this.socket = webSocketServer;
     this.pingInterval = setInterval(() => {
-      for (const socket of socketServer.clients) {
+      for (const socket of webSocketServer.clients) {
         if (socket.isAlive === false) {
           connectionsBySocket.get(socket)?.disconnect();
           socket.terminate();

@@ -1,4 +1,3 @@
-const { WebSocket } = require('ws');
 
 const messages = new class {
 
