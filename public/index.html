@@ -178,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
     drawings: {},
   };
 
-  const host = 'localhost:3001';
+  const host = location.host;
   const connection = new Connection(host);
   state.connection = connection;
   new Reconnection(connection);
