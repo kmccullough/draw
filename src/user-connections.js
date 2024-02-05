@@ -6,6 +6,16 @@ function heartbeat() {
 
 const newConnection = 'new connection';
 
+function extractQueryParams(url) {
+  const result = {};
+  const params = url?.split('?')[1]?.split('&') || [];
+  for (const param of params) {
+    const [ key, value ] = param.split('=');
+    result[key] = value;
+  }
+  return result;
+}
+
 class UserConnections {
 
   connections = {};
@@ -23,9 +33,10 @@ class UserConnections {
     return new UserConnections(...args);
   }
 
-  init(webSocketServer) {
+  init(webSocketServer, version) {
     const { connectionsBySocket } = this;
     this.socket = webSocketServer;
+    this.version = version;
     this.pingInterval = setInterval(() => {
       for (const socket of webSocketServer.clients) {
         if (socket.isAlive === false) {
@@ -39,7 +50,10 @@ class UserConnections {
     }, 30000);
   }
 
-  initConnection(socket) {
+  initConnection({ socket }, { url }) {
+    if (extractQueryParams(url).version !== this.version) {
+      socket.send(JSON.stringify([ '$reload' ]));
+    }
     heartbeat.call(socket);
     socket.on('pong', heartbeat);
     this.handleConnections(socket);

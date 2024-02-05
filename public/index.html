@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 
-<title>Canvas Template</title>
+<title>Draw</title>
 
 <style>
 
@@ -21,6 +21,13 @@
 
 
 <script>(() => { 'use strict';
+
+const VERSION = '0.0.2';
+
+function attachQueryParams(url, queryParams = {}) {
+  return url + (url.includes('?') ? '&' : '?')
+    + Object.entries(queryParams).map(([ key, value ]) => `${key}=${value}`).join('&');
+}
 
 class Emitter {
 
@@ -59,15 +66,17 @@ class Connection {
   connection = new Emitter;
   messages = new Emitter;
 
-  constructor(host, connectionId = null, connectionKey = null) {
+  constructor(host, version) {
     this.host = host;
-    this.connectionId = connectionId;
-    this.connectionKey = connectionKey;
+    this.version = version;
     this.reconnect();
   }
 
   reconnect() {
-    const socket = this.socket = new WebSocket('ws://' + (this.host ?? 'localhost:8080'));
+    const url = attachQueryParams('ws://' + (this.host ?? 'localhost:8080'), {
+      version: this.version,
+    });
+    const socket = this.socket = new WebSocket(url);
     socket.addEventListener('error', e => this.connection.emit('error', e, this));
     socket.addEventListener('close', () => this.connection.emit('close', this));
     socket.addEventListener('open', () => {
@@ -87,6 +96,9 @@ class Connection {
       }
       const [ type, ...args ] = data;
       switch (type) {
+        case '$reload': {
+          this.connection.emit('reload', this);
+        } break;
         case '$connect': {
           this.connectionId = args[0];
           this.connectionKey = args[1];
@@ -179,10 +191,25 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 
   const host = location.host;
-  const connection = new Connection(host);
+  const connection = new Connection(host, VERSION);
   state.connection = connection;
   new Reconnection(connection);
   connection.connection
+    .on('reload', () => {
+      const btn = window.reloadButton ??= document.createElement('button');
+      if (!document.contains(btn)) {
+        btn.innerText = 'Reload';
+        btn.addEventListener('click', () => location.reload());
+        Object.assign(btn.style, {
+          position: 'absolute',
+          top: '.5rem',
+          left: '50%',
+          transform: 'translateX(-50%)'
+        });
+        document.body.append(btn);
+      }
+      canvas.remove();
+    })
     .on('open', () => {
       state.positions = {};
     })

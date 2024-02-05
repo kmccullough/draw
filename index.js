@@ -1,6 +1,7 @@
 const path = require('node:path');
 const process = require('node:process');
 
+const VERSION = require('./package.json').version;
 let port = 3001;
 
 const { argv } = process;
@@ -71,7 +72,7 @@ fastify.register(require('@fastify/static'), {
   }, // optional: default {}
 });
 
-const initConnection = ({ socket }) => userConnections.initConnection(socket);
+const initConnection = (conn, req) => userConnections.initConnection(conn, req);
 
 fastify.register(async function () {
   fastify.route({
@@ -85,7 +86,7 @@ fastify.register(async function () {
 (async function() {
   try {
     await fastify.listen({ port: port });
-    userConnections.init(fastify.websocketServer);
+    userConnections.init(fastify.websocketServer, VERSION);
     ipc.server.start();
   } catch (err) {
     fastify.log.error(err);
