@@ -1,10 +1,9 @@
-const UserConnection = require('./user-connection');
+const { UserConnection } = require('./user-connection');
+const { Emitter } = require('./emitter');
 
 function heartbeat() {
   this.isAlive = true;
 }
-
-const newConnection = 'new connection';
 
 function extractQueryParams(url) {
   const result = {};
@@ -23,6 +22,7 @@ class UserConnections {
   connectionsBySocket = new WeakMap();
   socket;
   pingInterval;
+  events = new Emitter;
 
   constructor() {
     this.init = this.init.bind(this);
@@ -51,101 +51,79 @@ class UserConnections {
   }
 
   initConnection({ socket }, { url }) {
-    if (extractQueryParams(url).version !== this.version) {
-      socket.send(JSON.stringify([ '$reload' ]));
-    }
+    const params = extractQueryParams(url);
     heartbeat.call(socket);
     socket.on('pong', heartbeat);
-    this.handleConnections(socket);
+    this.handleMessages(socket, params);
   }
 
   close(userConnection) {
 
   }
 
-  handleConnections(socket) {
+  handleMessages(socket, params) {
+    let { version, id: connId, key: connKey } = params;
     const userConnections = this;
     const { connectionIds, connections } = userConnections;
-    function connectionClose() {
-      console.error(`disconnected ${newConnection}`);
-    }
-    function connectionError() {
-      console.error(`error on ${newConnection}`);
-    }
-    function connectionMessage(data) {
-      if (!(data = userConnections.getMessageData(data))) {
-        return;
-      }
-      let [ type, connectionId, connectionKey ] = data;
-      if (type !== '$connect') {
-        console.error(`received from ${newConnection} non-connect message type: ${type}`);
-        return;
-      }
-      socket.off('close', connectionClose);
-      socket.off('error', connectionError);
-      socket.off('message', connectionMessage);
-      let connection = connections[connectionId];
-      if (connection) {
-        if (connection.connectionKey === connectionKey) {
-          connection.reconnect(socket);
-        } else {
-          console.error(`received from ${connectionId} incorrect connectionKey: ${connectionKey}, expected: ${connection.connectionKey}`);
-          connection = null;
-        }
-      }
-      if (!connection) {
-        if (!connectionId) {
-          connectionId = 1;
-          for (; connectionIds.includes(connectionId); ++connectionId);
-        }
-        connectionIds.push(socket.id = connectionId);
-        connectionKey = Math.ceil(Math.random() * 0xffffffff);
-      }
-      socket.send(JSON.stringify([ '$connect', connectionId, connectionKey ]));
-      if (!connection) {
-        connection = connections[connectionId]
-          = new UserConnection(userConnections, connectionId, connectionKey);
-        connection.connect(socket);
-      }
-      userConnections.handleMessages(connection);
-    }
-    socket.on('close', connectionClose);
-    socket.on('error', connectionError);
-    socket.on('message', connectionMessage);
-  }
 
-  handleMessages(userConnection) {
-    const userConnections = this;
-    const { connectionId, messages, socket } = userConnection;
-    socket.on('close', () => {
-      try {
-        this.connectionIds.splice(this.connectionIds.findIndex(id => id === connectionId), 1);
-        delete this.connections[connectionId];
-        userConnection.disconnect();
-      } catch (e) {
-        console.error(`error processing disconnect on ${connectionId}`);
-      }
-    });
+    if (version !== this.version) {
+      socket.send(JSON.stringify([ 'reload' ]));
+    }
+
+    let connection = connId && connKey
+      && connections[connId]?.connectionKey === connKey && connections[connId];
+
+    if (!connection) {
+      connId ||= 1;
+      for (; connectionIds.includes(connId); ++connId);
+      connectionIds.push(socket.id = connId);
+      connKey = Math.ceil(Math.random() * 0xffffffff);
+    }
+
+    socket.send(JSON.stringify([ '$connect', connId, connKey ]));
+
+    if (connection) {
+      connection.reconnect(socket);
+    } else {
+      connection = connections[connId] = new UserConnection(this, connId, connKey);
+      this.events.emit('connection', connection);
+      connection.connect(socket);
+    }
+
+    const { messages } = connection;
+
     socket.on('error', error => {
       try {
-        userConnection.error(error);
+        connection.error(error);
       } catch (e) {
-        console.error(`error processing error on ${connectionId}`);
+        console.error(`error processing error on ${connId}`);
       }
     });
+
+    socket.on('close', () => {
+      try {
+        const index = this.connectionIds.findIndex(id => id === connId);
+        this.connectionIds.splice(index, 1);
+        delete this.connections[connId];
+        connection.disconnect();
+      } catch (e) {
+        console.error(`error processing disconnect on ${connId}`);
+      }
+    });
+
     socket.on('message', data => {
-      if (!(data = userConnections.getMessageData(data, connectionId))) {
+      if (!(data = userConnections.getMessageData(data, connId))) {
         return;
       }
       const [ type, ...args ] = data;
       if (!type || !messages[type]) {
-        console.error(`received from ${connectionId} unknown message type: ${type}`);
+        console.error(`received from ${connId} unknown message type: ${type}`);
         return;
       }
       try {
-        messages[type].apply(userConnection, args);
+        messages[type].apply(connection, args);
       } catch (e) {
-        console.error(`error processing message of type ${type} from ${connectionId}`, e);
+        console.error(`error processing message of type ${type} from ${connId}`, e);
       }
     });
   }
@@ -168,6 +146,17 @@ class UserConnections {
 
   destroy() {
     clearInterval(this.pingInterval);
+    this.events.clear();
+    return this.forEach(c => c.destroy());
+  }
+
+  forEach(callback) {
+    const { connections, connectionIds } = this;
+    const { length } = connectionIds;
+    for (let i = 0; i < length; ++i) {
+      callback(connections[connectionIds[i]], i, this);
+    }
+    return this;
   }
 
   send(type, ...args) {
@@ -175,14 +164,7 @@ class UserConnections {
   }
 
   sendFrom(userConnection, type, ...args) {
-    const { connections } = this;
-    for (const connectionId of this.connectionIds) {
-      const connection = connections[connectionId];
-      if (connection !== userConnection) {
-        connection.send(type, ...args);
-      }
-    }
-    return this;
+    return this.forEach(c => c !== userConnection && c.send(type, ...args));
   }
 
 }

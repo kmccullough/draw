@@ -22,7 +22,7 @@
 
 <script>(() => { 'use strict';
 
-const VERSION = '0.0.2';
+const VERSION = '0.0.3';
 
 function attachQueryParams(url, queryParams = {}) {
   return url + (url.includes('?') ? '&' : '?')
@@ -73,16 +73,16 @@ class Connection {
   }
 
   reconnect() {
-    const url = attachQueryParams('ws://' + (this.host ?? 'localhost:8080'), {
-      version: this.version,
-    });
+    const params = { version: this.version };
+    if (this.connectionId) {
+      params.id = this.connectionId;
+      params.key = this.connectionKey;
+    }
+    const url = attachQueryParams('ws://' + (this.host ?? 'localhost:8080'), params);
     const socket = this.socket = new WebSocket(url);
     socket.addEventListener('error', e => this.connection.emit('error', e, this));
     socket.addEventListener('close', () => this.connection.emit('close', this));
-    socket.addEventListener('open', () => {
-      this.connection.emit('$open', this);
-      this.send('$connect', ...(this.connectionId ? [ this.connectionId, this.connectionKey ] : []));
-    });
+    socket.addEventListener('open', () => this.connection.emit('$open', this));
     socket.addEventListener('message', event => {
       let { data } = event;
       try {
@@ -96,9 +96,6 @@ class Connection {
       }
       const [ type, ...args ] = data;
       switch (type) {
-        case '$reload': {
-          this.connection.emit('reload', this);
-        } break;
         case '$connect': {
           this.connectionId = args[0];
           this.connectionKey = args[1];
@@ -173,6 +170,7 @@ class Reconnection {
   succeed() {
     this.clearTimeouts();
     this.stabilizeTimeout = setTimeout(this.stabilized, this.stableTime);
+    console.log(`Reconnected.`);
   }
 
   stabilized() {
@@ -233,6 +231,19 @@ document.addEventListener('DOMContentLoaded', () => {
         delete pos[connectionId];
       } else {
         pos[connectionId] = [ x, y ];
+      }
+    })
+    .on('drawings', userDrawings => {
+      const { connectionId } = connection;
+      for (let u = 0; u < userDrawings.length; ++u) {
+        const [ id, drawings ] = userDrawings[u];
+        if (id === connectionId) {
+          continue;
+        }
+        const drawState = (state.drawings[id] ??= []);
+        for (let d = 0; d < drawings.length; ++d) {
+          drawState.push(...drawings[d]);
+        }
       }
     })
     .on('draw', (connectionId, drawing) => {

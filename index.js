@@ -54,6 +54,12 @@ ipc.serve(() => {
 });
 
 const userConnections = require('./src/user-connections');
+const {UserData} = require('./src/user-data');
+userConnections.events.on('connection', connection => {
+  if (!connection.state) {
+    connection.setState(new UserData);
+  }
+})
 
 const fastify = require('fastify')({ logger: true });
 fastify.register(require('@fastify/websocket'), {
